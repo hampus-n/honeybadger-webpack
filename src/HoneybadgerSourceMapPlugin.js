@@ -1,3 +1,5 @@
+import fs from 'fs';
+import { resolve } from 'path';
 import async from 'async';
 import request from 'request';
 import VError from 'verror';
@@ -12,13 +14,15 @@ class HoneybadgerSourceMapPlugin {
     assetsUrl,
     revision = "master",
     silent = false,
-    ignoreErrors = false
+    ignoreErrors = false,
+    removeLocal = false
   }) {
     this.apiKey = apiKey;
     this.assetsUrl = assetsUrl;
     this.revision = revision;
     this.silent = silent;
     this.ignoreErrors = ignoreErrors;
+    this.removeLocal = removeLocal;
   }
 
   afterEmit(compilation, done) {
@@ -65,8 +69,22 @@ class HoneybadgerSourceMapPlugin {
     }, {});
   }
 
+
+  removeSourceMap(compilation, sourceMap, done) {
+    const path = resolve(compilation.outputOptions.path, sourceMap);
+    fs.unlink(path, (err) => {
+      if (err)
+        return done(new VError(err, `failed to delete ${path}`));
+      if (!this.silent)
+        console.info(`Removed ${path}`); // eslint-disable-line no-console
+    });
+  }
+
   uploadSourceMap(compilation, { sourceFile, sourceMap }, done) {
     const req = request.post(ENDPOINT, (err, res, body) => {
+      if (this.removeLocal)
+        this.removeSourceMap(compilation, sourceMap, done);
+
       if (!err && res.statusCode === 201) {
         if (!this.silent) {
           console.info(`Uploaded ${sourceMap} to Honeybadger API`); // eslint-disable-line no-console
